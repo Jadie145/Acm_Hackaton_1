@@ -53,6 +53,7 @@ const analyze = document.querySelector('#analyze');
 const output = document.querySelector('#output');
 let live = false;
 let status = 'idle';
+let analysisError = '';
 let result;
 let previewUrl;
 let requestController;
@@ -72,12 +73,15 @@ function render() {
   document.querySelectorAll('[data-copy]').forEach(node => {
     node.textContent = t[node.dataset.copy];
   });
-  document.querySelector('#connection').textContent = t[live ? 'live' : 'missing'];
+  document.querySelector('#connection').textContent = language.value === 'hi'
+    ? 'मुख्य जाँच इस डिवाइस पर होती है। Gemini के लिए इंटरनेट चाहिए।'
+    : 'Analyze photo runs on this device. Gemini requires an internet connection.';
   analyze.disabled = !validPhoto || status === 'busy';
   document.querySelector('#onlineAnalyze').disabled = !live || !validPhoto || status === 'busy';
   output.replaceChildren();
   if (!result) {
     append(output, 'p', t[status], 'muted');
+    if (status === 'failed' && analysisError) append(output, 'p', analysisError, 'hint');
     return;
   }
   if (result.example) append(output, 'span', t.demo, 'tag');
@@ -120,11 +124,11 @@ document.querySelector('#scan').addEventListener('submit', async event => {
   event.preventDefault();
   if (analyze.disabled) return;
   if (event.submitter === analyze) {
-    document.querySelector('#fieldResult').textContent = 'Checking photo on this device…';
-    document.querySelector('#fieldScan').click();
-    document.querySelector('#fieldResult').scrollIntoView({ block: 'center' });
+    requestController?.abort();
+    document.dispatchEvent(new Event('local-analysis'));
     return;
   }
+  document.dispatchEvent(new Event('online-result'));
   const controller = new AbortController();
   requestController = controller;
   result = undefined;
@@ -135,13 +139,17 @@ document.querySelector('#scan').addEventListener('submit', async event => {
     const response = await fetch('/api/analyze', {
       method: 'POST', headers: { 'Content-Type': file.type }, body: file, signal: controller.signal
     });
-    if (!response.ok) throw new Error();
     const answer = await response.json();
+    if (!response.ok) {
+      const diagnostic = [answer.error, answer.upstreamStatus && 'Gemini HTTP ' + answer.upstreamStatus, answer.detail].filter(Boolean);
+      throw new Error(diagnostic.join(' · ') || 'HTTP ' + response.status);
+    }
     if (controller.signal.aborted) return;
     result = answer;
     status = 'idle';
-  } catch {
+  } catch (error) {
     if (controller.signal.aborted) return;
+    analysisError = error.message;
     status = 'failed';
   }
   render();
@@ -149,6 +157,7 @@ document.querySelector('#scan').addEventListener('submit', async event => {
 
 document.querySelectorAll('[data-example]').forEach(button => {
   button.addEventListener('click', () => {
+    document.dispatchEvent(new Event('online-result'));
     requestController?.abort();
     clearPreview();
     image.value = '';

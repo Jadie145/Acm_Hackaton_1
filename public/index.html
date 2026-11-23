@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/field.js" defer></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body>
   <header>
@@ -38,24 +39,24 @@
           <button class="primary" id="analyze" disabled data-copy="analyze">Analyze photo</button>
           <button id="onlineAnalyze" type="submit" disabled>Check with Gemini</button>
         </form>
-        <div class="examples">
-          <p data-copy="examples">Preview example results</p>
+        <details class="examples">
+          <summary data-copy="examples">Preview example results</summary>
           <button type="button" data-example="early_blight" data-copy="sampleBlight">Possible early blight</button>
           <button type="button" data-example="uncertain" data-copy="sampleUncertain">Unclear photo</button>
-        </div>
+        </details>
       </section>
       <section class="panel result" aria-live="polite">
         <h2 data-copy="result">Result</h2>
         <div id="output"></div>
+        <div id="localResult" hidden>
+          <p id="fieldResult" role="status"></p>
+          <canvas id="overlay" hidden aria-label="Approximate brown areas on the leaf"></canvas>
+          <button id="refer" hidden>Send photo for expert review</button>
+        </div>
       </section>
     </div>
-    <section class="panel">
-      <h2>Offline field check</h2>
-      <p>Select a photo above. The field check runs on this device after the first online visit.</p>
-      <button id="fieldScan">Check selected photo offline</button>
-      <p id="fieldResult" role="status"></p><canvas id="overlay" hidden></canvas>
-      <button id="refer" hidden>Send photo for expert review</button>
-      <h3>मराठी सल्ला</h3>
+    <section class="panel" lang="mr">
+      <h2>मराठी सल्ला</h2>
       <button id="speak">मराठीत प्रश्न विचारा</button>
       <button id="advice">अगेती करपा दिसल्यास काय करावे?</button>
       <p id="reply" role="status"></p>
@@ -64,11 +65,21 @@
     </section>
     <section class="panel">
       <h2>Officer dashboard</h2>
-      <button id="inbox">Open local expert inbox</button><div id="cases"></div>
-      <h3>Village risk map</h3>
-      <p>Demo scenario near Nashik. Orange markers show simulated early-blight reports.</p>
-      <canvas id="map" width="440" height="150" aria-label="Simulated reports in Pimpalgaon Baswant, Niphad and Ozar"></canvas>
-      <button id="weather">Check forecast and alert</button><p id="alert" role="status"></p>
+      <div class="dashboard">
+        <div>
+          <h3>Village risk map</h3>
+          <p class="hint">Orange markers show simulated early-blight reports near Nashik.</p>
+          <div id="map" aria-label="Village risk map">Loading OpenStreetMap…</div>
+        </div>
+        <div>
+          <h3>24-hour humidity</h3>
+          <p id="alert" role="status">Forecast for the three demo villages.</p>
+          <button id="weather">Refresh forecast</button>
+          <p class="hint"><a href="https://open-meteo.com/">Weather by Open-Meteo</a></p>
+          <h3>Expert referrals</h3>
+          <button id="inbox">Open local expert inbox</button><div id="cases"></div>
+        </div>
+      </div>
     </section>
   </main>
 </body>

@@ -75,3 +75,17 @@ form:focus-within .upload { outline: 2px solid #286344; outline-offset: 3px; }
 a { color: #185b3b; }
 @media (max-width: 680px) { .workspace { grid-template-columns: 1fr; } }
 main > .panel { margin-top: 1rem; } canvas { max-width: 100%; height: auto; }
+
+.workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.examples summary { cursor: pointer; padding: .7rem 0; }
+#onlineAnalyze { width: 100%; margin-top: .55rem; }
+button:disabled { opacity: .65; cursor: default; }
+#localResult canvas { display: block; border-radius: .75rem; margin-bottom: .8rem; }
+.dashboard { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.5rem; }
+#map { height: 330px; width: 100%; border-radius: .85rem; background: #eaf1e7; }
+#cases { margin-top: .75rem; }
+#cases img { display: block; margin: .5rem 0; border-radius: .5rem; }
+@media (max-width: 680px) {
+  .workspace, .dashboard { grid-template-columns: minmax(0, 1fr); }
+  #map { height: 270px; }
+}
