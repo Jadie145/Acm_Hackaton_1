@@ -30,9 +30,9 @@ Press **Ctrl+C** to stop the server. Run `Remove-Item Env:PORT` in that PowerShe
 
 | Feature | How to try it |
 | --- | --- |
-| Local classification | Choose a photo and select **Analyze photo**. The app can suggest a crop and condition or return uncertain. A possible tomato early-blight result includes a color-based overlay and severity estimate. |
+| Local classification | Choose a photo and select **Analyze photo**. The model checks 38 crop-and-condition classes across 14 PlantVillage crop groups. It reports a possible disease, no visible symptoms, or uncertainty. A possible tomato early-blight result includes a color-based overlay and severity estimate. |
 | Offline classification | Open the app while the server is reachable so the browser can cache the page and model. Keep using the same browser, address, and port. Once cached, local inference can run with the network disconnected. |
-| Dataset verification | With the optional dataset below and the local server reachable, upload an unchanged PlantVillage image under its original filename. The app verifies the bytes and displays the source split and class folder. |
+| Dataset verification | With the optional dataset below and the local server reachable, upload an unchanged PlantVillage image under its original filename. The app verifies the bytes and displays the crop and condition. |
 | Marathi advice | Select the preset Marathi question or use the microphone button. Speech input and playback depend on browser support, microphone permission, and available voices. |
 | Expert referrals | Choose **Send photo for expert review** on an eligible result. In **Officer dashboard**, open the local expert inbox. Referrals queued offline sync when the app reconnects to the server. |
 | Map and forecast | Open the officer dashboard and select **Refresh forecast**. The map uses OpenStreetMap tiles through Leaflet and the humidity forecast comes from Open-Meteo. The three village reports and alerts are a demo scenario. These features need internet access. |
@@ -70,21 +70,42 @@ If extraction creates an extra wrapper folder, move the inner `PlantVillage` dir
 
 3. Restart the server and reload the app. Upload a photo and choose **Check with Gemini**.
 
+The browser's Gemini check looks for crop and disease across species. The evaluation CLI still uses the tomato benchmark labels.
+
 The model line is optional and defaults to `gemini-4-hydrogen`. Choose a vision model that supports structured output through the [Interactions API](https://aistudio.google.com/docs/interactions-overview) and has quota on your account. **Check with Gemini** sends the selected photo to Google. Keep your key in the Git-ignored `.env` file.
 
-## Optional model training
+## Use a YOLO model trained in Colab
 
-The app uses `public/leaf-network.json` for its neural classifier. To rebuild that file, prepare PlantVillage as above and install Python 3.12. On Windows with the Python launcher, run from the project folder:
+Download `weights/best.pt` from your Colab run in Google Drive. Put it at `datasets/yolo/best.pt` in this project. Use your own PlantVillage YOLO **classification** checkpoint with crop-and-condition class names.
+
+With Python 3.12 installed, run these commands in PowerShell from the project folder.
+
+```powershell
+py -3.12 -m venv datasets/.yolo-venv
+& .\datasets\.yolo-venv\Scripts\python.exe -m pip install ultralytics==8.4.216
+npm.cmd start
+```
+
+If you already created `datasets/.yolo-venv` with Ultralytics installed, start the server directly. The server prints **Local YOLO classifier ready** once it loads the checkpoint. Reload the app and use **Analyze photo**. Confident results show a **YOLO score**. Ambiguous results show uncertainty. While YOLO is ready, it analyzes the photo directly, including photos copied from PlantVillage. YOLO runs on the local server CPU without a Gemini key. The browser model is available when the local server or YOLO worker is unavailable.
+
+For weights stored elsewhere, set `YOLO_WEIGHTS` to their path before starting. You can also set `PYTHON_EXECUTABLE` to a Python interpreter with Ultralytics installed.
+
+## Optional Python verification and model training
+
+The server automatically starts the Python verifier when its interpreter and packages are available. It uses the same weights as the browser and checks the original image, a mirrored view, and a crop. A disagreement makes the app withhold the uncertain crop or condition. The browser still works offline or when the verifier is unavailable.
+
+To set it up, install Python 3.12 and run these commands from the project folder in PowerShell:
 
 ```powershell
 py -3.12 -m venv datasets/.leaf-venv
 $python = '.\datasets\.leaf-venv\Scripts\python.exe'
 & $python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 & $python -m pip install numpy pillow
-& $python train-network.py
 ```
 
-If your Python 3.12 installation only exposes `python`, use `python -m venv datasets/.leaf-venv` for the first command. Training fits on `train`, exports new browser weights, and prints results on a separate sample of `val`. Reload the page while the server is reachable to use the new weights.
+If Python only exposes `python`, use `python -m venv datasets/.leaf-venv` for the first command. Restart the server with `npm.cmd start` and look for **Python leaf verifier ready**. For an existing environment, set `$env:PYTHON_EXECUTABLE` to the full path to its Python executable before starting.
+
+To retrain the included network, prepare PlantVillage and run `& $python train-network.py`. Training fits on `train`, exports browser weights to `public/leaf-network.json`, and prints results on a sample of `val`. Restart the server and reload the page to update both inference paths.
 
 When neural weights are unavailable, the app uses `public/model.json` as a fallback. To rebuild and evaluate that reference model on Windows:
 

@@ -43,16 +43,21 @@ document.addEventListener('local-analysis', async () => {
   fieldStatus('Checking photo on this device…');
   el('localResult').scrollIntoView({ block: 'nearest' });
   try {
-    const match = await (navigator.onLine ? fetch('/api/verify-dataset?' + new URLSearchParams({ name: file.name }), {
+    const canReachServer = navigator.onLine || ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
+    const verification = await (canReachServer ? fetch('/api/local-detect', {
+      method: 'POST', body: file, signal: AbortSignal.timeout(4500)
+    }).then(response => response.ok ? response.json() : null)
+      .then(response => response?.verification).catch(() => null) : null);
+    const yolo = verification?.engine === 'yolo';
+    const match = await (canReachServer && !yolo ? fetch('/api/verify-dataset?' + new URLSearchParams({ name: file.name }), {
       method: 'POST', body: file, signal: AbortSignal.timeout(2000)
     }).then(response => response.ok ? response.json() : null).catch(() => null) : null);
     if (el('image').files[0] !== file || el('localResult').hidden) return;
     let verifiedMessage;
     if (match?.match) {
-      const { species, condition, split, folder } = match.match;
+      const { species, condition } = match.match;
       const crop = species === 'Tomato' ? 'Tomato' : species.replace(/_/g, ' ') + ' (non-tomato)';
-      verifiedMessage = 'Verified PlantVillage file · ' + crop + ' · ' +
-        condition.replace(/_/g, ' ').toLowerCase() + '. Source: ' + split + '/' + folder + '.';
+      verifiedMessage = crop + ' · ' + condition.replace(/_/g, ' ').trim().toLowerCase() + '.';
       if (species !== 'Tomato' || condition !== 'Early_blight') return fieldStatus(verifiedMessage);
     }
     const image = await createImageBitmap(file);
@@ -69,10 +74,12 @@ document.addEventListener('local-analysis', async () => {
       image.close();
       return showBlight(canvas, verifiedMessage);
     }
-    networkPromise ??= fetch('/leaf-network.json')
-      .then(response => response.ok ? response.json() : null)
-      .catch(() => null);
-    const network = await networkPromise;
+    if (!yolo) {
+      networkPromise ??= fetch('/leaf-network.json')
+        .then(response => response.ok ? response.json() : null)
+        .catch(() => null);
+    }
+    const network = yolo ? null : await networkPromise;
     if (el('image').files[0] !== file || el('localResult').hidden) {
       image.close();
       return;
@@ -86,9 +93,18 @@ document.addEventListener('local-analysis', async () => {
     image.close();
     const pixelsForModel = sample.getImageData(0, 0, size, size).data;
     let prediction;
-    if (network) {
+    if (yolo) {
+      prediction = verification;
+    } else if (network) {
       const { classifyNetwork } = await import('/leaf-network.mjs');
       prediction = classifyNetwork(pixelsForModel, network);
+      if (verification) {
+        if (verification?.species && prediction.species && verification.species !== prediction.species) {
+          prediction = { crop: 'uncertain' };
+        } else if (verification?.condition && verification.condition !== prediction.condition) {
+          prediction = { ...prediction, condition: null };
+        }
+      }
     } else {
       const { leafFeatures, classifyLeaf } = await import('/leaf-model.mjs');
       const references = await fetch('/model.json').then(response => {
@@ -101,25 +117,20 @@ document.addEventListener('local-analysis', async () => {
     if (el('image').files[0] !== file || el('localResult').hidden) return;
     referralPhoto = photoForReferral;
     const label = prediction.condition;
-    canvas.hidden = label !== 'Early_blight';
-    if (prediction.crop === 'other') {
+    const species = prediction.species?.replace(/_/g, ' ');
+    if (!species || !label) {
       el('refer').hidden = false;
-      const species = prediction.species?.replace(/_/g, ' ');
-      const crop = species ? 'Likely ' + species + ' (non-tomato).' : 'Likely a non-tomato leaf.';
-      const condition = label === 'healthy' ? ' No visible symptoms suggested.' :
-        label ? ' Possible ' + label.replace(/_/g, ' ').toLowerCase() + '.' : ' Condition uncertain.';
-      return fieldStatus(crop + condition + ' Ask an agriculture officer to confirm.');
+      return fieldStatus(species ? 'Likely ' + species + ' · Disease uncertain. Retake the photo or send it for review.' :
+        (yolo ? 'YOLO could not confidently identify the crop or condition.' : 'Crop and disease uncertain.') +
+        ' Retake a sharp leaf photo or send it for review.');
     }
-    if (prediction.crop === 'uncertain' || !label) {
+    const agreement = typeof prediction.score === 'number'
+      ? (yolo ? 'YOLO' : 'Model') + ' score ' + Math.round(prediction.score * 100) + '%'
+      : prediction.agreement + ' of 7 crop references agree';
+    if (label === 'healthy') return fieldStatus('Likely ' + species + ' · No visible symptoms suggested · ' + agreement);
+    if (label !== 'Early_blight' || prediction.species !== 'Tomato') {
       el('refer').hidden = false;
-      return fieldStatus(prediction.crop === 'tomato' ? 'Likely tomato leaf. The condition is uncertain.' : 'Crop uncertain. Retake a sharp leaf photo or send it for review.');
-    }
-    const agreement = network ? 'Model score ' + Math.round(prediction.score * 100) + '%' :
-      prediction.agreement + ' of 7 tomato references agree';
-    if (label === 'healthy') return fieldStatus('Likely tomato leaf · No visible symptoms suggested · ' + agreement);
-    if (label !== 'Early_blight') {
-      el('refer').hidden = false;
-      return fieldStatus('Likely tomato leaf · Possible ' + label.replace(/^Tomato_/, '').replace(/_/g, ' ').toLowerCase() + ' · ' + agreement + '. Ask an agriculture officer to confirm.');
+      return fieldStatus('Likely ' + species + ' · Possible ' + label.replace(/^Tomato_/, '').replace(/_/g, ' ').trim().toLowerCase() + ' · ' + agreement + '. Ask an agriculture officer to confirm.');
     }
     showBlight(canvas, 'Likely tomato leaf · Possible early blight · ' + agreement + '.');
   } catch { fieldStatus('Unable to read the photo or local model. Load the app online once and try again.'); }

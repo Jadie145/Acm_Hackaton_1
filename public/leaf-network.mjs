@@ -55,28 +55,30 @@ function predict(rgba, model) {
   const dense = model.layers[3];
   const logits = dense.bias.map((bias, index) => features.reduce(
     (sum, value, n) => sum + value * dense.weight[index * features.length + n], bias));
-  const cropLogit = logits.length > model.labels.length ? logits.pop() : null;
+  logits.length = model.labels.length;
   const shift = Math.max(...logits);
   const scores = logits.map(logit => Math.exp(logit - shift));
   const total = scores.reduce((sum, score) => sum + score, 0);
-  return { scores: scores.map(score => score / total), cropLogit };
+  return scores.map(score => score / total);
 }
 
 export function classifyNetwork(rgba, model) {
   let detail = 0;
   for (let i = 0; i < rgba.length - 4; i += 4) detail += Math.abs(rgba[i+1] - rgba[i+5]);
   if (detail / (rgba.length / 4) < 2) return { crop: 'uncertain' };
-  const { scores, cropLogit } = predict(rgba, model);
-  const tomato = cropLogit === null
-    ? model.labels.reduce((sum, label, index) => sum + (label.startsWith('Tomato___') ? scores[index] : 0), 0)
-    : 1 / (1 + Math.exp(-cropLogit));
-  if (tomato > 0.35 && tomato < 0.65) return { crop: 'uncertain' };
-  const crop = tomato >= 0.65 ? 'tomato' : 'other';
-  const allowed = model.labels.map((label, index) => ({ label, score: scores[index] }))
-    .filter(row => row.label.startsWith('Tomato___') === (crop === 'tomato'));
-  const best = allowed.reduce((highest, row) => row.score > highest.score ? row : highest);
-  const score = best.score / allowed.reduce((sum, row) => sum + row.score, 0);
-  const [species, condition] = best.label.split('___');
-  if (score < 0.36) return { crop };
-  return { crop, species, condition, score };
+  const scores = predict(rgba, model);
+  const crops = new Map();
+  const classes = model.labels.map((label, index) => {
+    const [species, condition] = label.split('___');
+    const score = scores[index];
+    crops.set(species, (crops.get(species) || 0) + score);
+    return { species, condition, score };
+  });
+  const [[species, cropScore], [, runnerUp]] = [...crops].sort((a, b) => b[1] - a[1]);
+  if (cropScore < 0.65 || cropScore - runnerUp < 0.20) return { crop: 'uncertain' };
+  const [best, second] = classes.filter(row => row.species === species).sort((a, b) => b.score - a.score);
+  const crop = species === 'Tomato' ? 'tomato' : 'other';
+  const score = best.score / cropScore;
+  if (score < 0.55 || (second && (best.score - second.score) / cropScore < 0.15)) return { crop, species };
+  return { ...best, crop, score };
 }

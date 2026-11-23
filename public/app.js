@@ -1,7 +1,7 @@
 const copy = {
   en: {
-    crop: 'Tomato leaf check', title: 'What’s happening to your crop?',
-    subtitle: 'Upload a tomato leaf photo to check for signs of early blight and find out what to do next.',
+    crop: 'Crop disease check', title: 'What’s happening to your crop?',
+    subtitle: 'Upload a leaf photo to check the crop and look for visible signs of disease.',
     photo: 'Leaf photo', choose: 'Choose a photo', analyze: 'Analyze photo', result: 'Result',
     hint: 'Use daylight and keep one leaf in focus. JPEG, PNG or WebP, up to 8 MB.',
     examples: 'Preview example results', sampleBlight: 'Possible early blight', sampleUncertain: 'Unclear photo',
@@ -22,8 +22,8 @@ const copy = {
     source: 'TNAU Agritech · Tomato early blight'
   },
   hi: {
-    crop: 'टमाटर के पत्ते की जाँच', title: 'आपकी फसल में क्या हो रहा है?',
-    subtitle: 'टमाटर के पत्ते की फ़ोटो डालें और जानें कि अगेती झुलसा रोग के लक्षण दिख रहे हैं या नहीं।',
+    crop: 'फसल रोग की जाँच', title: 'आपकी फसल में क्या हो रहा है?',
+    subtitle: 'फसल की पहचान और रोग के दिखने वाले लक्षणों की जाँच के लिए पत्ते की फ़ोटो डालें।',
     photo: 'पत्ते की फ़ोटो', choose: 'फ़ोटो चुनें', analyze: 'फ़ोटो जाँचें', result: 'नतीजा',
     hint: 'दिन की रोशनी में एक पत्ते की साफ़ फ़ोटो लें। JPEG, PNG या WebP, अधिकतम 8 MB।',
     examples: 'नतीजों के उदाहरण देखें', sampleBlight: 'अगेती झुलसा रोग की संभावना', sampleUncertain: 'धुंधली फ़ोटो',
@@ -85,13 +85,19 @@ function render() {
     return;
   }
   if (result.example) append(output, 'span', t.demo, 'tag');
-  append(output, 'h3', t[result.label]);
+  if (result.crop) append(output, 'p', result.crop, 'tag');
+  append(output, 'h3', result.label === 'disease'
+    ? (language.value === 'hi' ? 'संभावित रोग · ' : 'Possible disease · ') + result.disease
+    : t[result.label]);
   append(output, 'p', t.evidence);
-  const list = append(output, 'ul', '');
-  result.clues.forEach(clue => append(list, 'li', t[clue]));
+  if (result.reason) append(output, 'p', result.reason);
+  if (result.clues.length) {
+    const list = append(output, 'ul', '');
+    result.clues.forEach(clue => append(list, 'li', t[clue]));
+  }
   append(output, 'h3', t.next);
   const advice = { early_blight: 'blightAdvice', no_visible_symptoms: 'healthyAdvice', uncertain: 'unsureAdvice' };
-  append(output, 'p', t[advice[result.label]]);
+  append(output, 'p', t[advice[result.label] || 'unsureAdvice']);
   if (result.label === 'early_blight') append(output, 'a', t.source).href = source;
 }
 
@@ -136,7 +142,7 @@ document.querySelector('#scan').addEventListener('submit', async event => {
   render();
   try {
     const file = image.files[0];
-    const response = await fetch('/api/analyze', {
+    const response = await fetch('/api/analyze?scope=crops', {
       method: 'POST', headers: { 'Content-Type': file.type }, body: file, signal: controller.signal
     });
     const answer = await response.json();
