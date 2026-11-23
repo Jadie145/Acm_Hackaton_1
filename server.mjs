@@ -10,6 +10,7 @@ try {
 }
 
 const files = new Map([
+  ['/leaf-model.mjs', ['leaf-model.mjs', 'text/javascript']],
   ['/field.js', ['field.js', 'text/javascript']],
   ['/sw.js', ['sw.js', 'text/javascript']],
   ['/model.json', ['model.json', 'application/json']],

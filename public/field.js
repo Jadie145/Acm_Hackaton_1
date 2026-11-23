@@ -1,4 +1,4 @@
-﻿const el = id => document.getElementById(id);
+const el = id => document.getElementById(id);
 const fieldStatus = message => { el('fieldResult').textContent = message; };
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => fieldStatus('Offline reload requires localhost or HTTPS.'));
 let referralPhoto;
@@ -29,37 +29,33 @@ document.addEventListener('local-analysis', async () => {
     ctx.drawImage(image, 0, 0, 240, 240);
     referralPhoto = canvas.toDataURL('image/jpeg', 0.75);
     const small = document.createElement('canvas');
-    small.width = small.height = 32;
-    const s = small.getContext('2d');
-    s.drawImage(image, 0, 0, 32, 32);
+    small.width = small.height = 64;
+    const sample = small.getContext('2d');
+    sample.drawImage(image, 0, 0, 64, 64);
     image.close();
-    const data = s.getImageData(0, 0, 32, 32).data;
-    const bins = Array(256).fill(0);
-    let contrast = 0;
-    for (let y = 4; y < 28; y++) for (let x = 4; x < 28; x++) {
-      const i = (y * 32 + x) * 4;
-      const quadrant = Math.floor(y / 16) * 2 + Math.floor(x / 16);
-      bins[quadrant * 64 + (data[i] >> 6) * 16 + (data[i+1] >> 6) * 4 + (data[i+2] >> 6)]++;
-      contrast += Math.abs(data[i+1] - data[i+5]);
-    }
-    const references = await fetch('/model.json').then(r => r.json());
+    const { leafFeatures, classifyLeaf } = await import('/leaf-model.mjs');
+    const references = await fetch('/model.json').then(response => {
+      if (!response.ok) throw new Error('Local model unavailable');
+      return response.json();
+    });
     if (el('image').files[0] !== file || el('localResult').hidden) return;
-    if (!references.length || references[0].bins.length !== bins.length) throw new Error('Local model version mismatch');
-    const nearest = references.map(row => ({
-      label: row.label, distance: row.bins.reduce((sum, v, i) => sum + Math.abs(v - bins[i]), 0)
-    })).sort((a,b) => a.distance-b.distance).slice(0,7);
-    const votes = {};
-    nearest.forEach(row => votes[row.label] = (votes[row.label] || 0) + 1);
-    const [label, count] = Object.entries(votes).sort((a,b) => b[1]-a[1])[0];
-    const uncertain = contrast/576 < 3 || count < 4 || nearest[0].distance > 300;
-    el('refer').hidden = !uncertain;
-    canvas.hidden = uncertain || label !== 'Early_blight';
-    if (uncertain) return fieldStatus('Uncertain. Retake a sharp tomato leaf photo or send this image for review.');
-    const agreement = Math.round(count/7*100) + '% reference agreement';
-    if (label === 'healthy') return fieldStatus('No visible symptoms suggested · ' + agreement);
+    if (!references[0]?.color) throw new Error('Local model version mismatch');
+    const prediction = classifyLeaf(leafFeatures(sample.getImageData(0, 0, 64, 64).data), references);
+    const label = prediction.condition;
+    canvas.hidden = label !== 'Early_blight';
+    if (prediction.crop === 'other') {
+      el('refer').hidden = false;
+      return fieldStatus('Likely a non-tomato leaf. Send the photo for expert review if you need a condition check.');
+    }
+    if (prediction.crop === 'uncertain' || !label) {
+      el('refer').hidden = false;
+      return fieldStatus(prediction.crop === 'tomato' ? 'Likely tomato leaf. The condition is uncertain.' : 'Crop uncertain. Retake a sharp leaf photo or send it for review.');
+    }
+    const agreement = prediction.agreement + ' of 7 tomato references agree';
+    if (label === 'healthy') return fieldStatus('Likely tomato leaf · No visible symptoms suggested · ' + agreement);
     if (label !== 'Early_blight') {
       el('refer').hidden = false;
-      return fieldStatus('Possible ' + label.replace(/^Tomato_/, '').replace(/_/g, ' ').toLowerCase() + ' · ' + agreement + '. Ask an agriculture officer to confirm.');
+      return fieldStatus('Likely tomato leaf · Possible ' + label.replace(/^Tomato_/, '').replace(/_/g, ' ').toLowerCase() + ' · ' + agreement + '. Ask an agriculture officer to confirm.');
     }
     const pixels = ctx.getImageData(0,0,240,240);
     let affected = 0, leaf = 0;
@@ -71,7 +67,7 @@ document.addEventListener('local-analysis', async () => {
     }
     ctx.putImageData(pixels,0,0);
     const percent = Math.round(100*affected/Math.max(1,leaf));
-    fieldStatus('Possible early blight · ' + agreement + '. Color-based severity estimate: ' + (percent < 10 ? 'low' : percent < 30 ? 'moderate' : 'high') + '. Orange marks brown pixels (' + percent + '% of estimated leaf area).');
+    fieldStatus('Likely tomato leaf · Possible early blight · ' + agreement + '. Color-based severity estimate: ' + (percent < 10 ? 'low' : percent < 30 ? 'moderate' : 'high') + '. Orange marks brown pixels (' + percent + '% of estimated leaf area).');
   } catch { fieldStatus('Unable to read the photo or local model. Load the app online once and try again.'); }
 });
 async function syncCases() {
