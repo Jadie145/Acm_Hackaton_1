@@ -74,3 +74,4 @@ form:focus-within .upload { outline: 2px solid #286344; outline-offset: 3px; }
 .tag { display: inline-block; padding: .3rem .55rem; border-radius: .4rem; background: #f5ead0; margin-bottom: .9rem; }
 a { color: #185b3b; }
 @media (max-width: 680px) { .workspace { grid-template-columns: 1fr; } }
+main > .panel { margin-top: 1rem; } canvas { max-width: 100%; height: auto; }

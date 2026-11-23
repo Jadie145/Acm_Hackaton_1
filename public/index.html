@@ -7,6 +7,7 @@
   <title>JRV Crop Health</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
+  <script src="/field.js" defer></script>
 </head>
 <body>
   <header>
@@ -35,6 +36,7 @@
           <p class="hint" data-copy="hint">Use daylight and keep one leaf in focus. JPEG, PNG or WebP, up to 8 MB.</p>
           <p class="hint" id="connection" role="status"></p>
           <button class="primary" id="analyze" disabled data-copy="analyze">Analyze photo</button>
+          <button id="onlineAnalyze" type="submit" disabled>Check with Gemini</button>
         </form>
         <div class="examples">
           <p data-copy="examples">Preview example results</p>
@@ -47,6 +49,27 @@
         <div id="output"></div>
       </section>
     </div>
+    <section class="panel">
+      <h2>Offline field check</h2>
+      <p>Select a photo above. The field check runs on this device after the first online visit.</p>
+      <button id="fieldScan">Check selected photo offline</button>
+      <p id="fieldResult" role="status"></p><canvas id="overlay" hidden></canvas>
+      <button id="refer" hidden>Send photo for expert review</button>
+      <h3>मराठी सल्ला</h3>
+      <button id="speak">मराठीत प्रश्न विचारा</button>
+      <button id="advice">अगेती करपा दिसल्यास काय करावे?</button>
+      <p id="reply" role="status"></p>
+      <a href="https://agritech.tnau.ac.in/crop_protection/tomato_diseases_2.html">TNAU tomato advisory</a> ·
+      <a href="https://keralaagriculture.gov.in/wp-content/uploads/2021/03/Manual-Published-min.pdf">Kerala Agriculture Department, chapter XIII</a>
+    </section>
+    <section class="panel">
+      <h2>Officer dashboard</h2>
+      <button id="inbox">Open local expert inbox</button><div id="cases"></div>
+      <h3>Village risk map</h3>
+      <p>Demo scenario near Nashik. Orange markers show simulated early-blight reports.</p>
+      <canvas id="map" width="440" height="150" aria-label="Simulated reports in Pimpalgaon Baswant, Niphad and Ozar"></canvas>
+      <button id="weather">Check forecast and alert</button><p id="alert" role="status"></p>
+    </section>
   </main>
 </body>
 </html>
