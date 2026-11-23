@@ -2,6 +2,7 @@ const el = id => document.getElementById(id);
 const fieldStatus = message => { el('fieldResult').textContent = message; };
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => fieldStatus('Offline reload requires localhost or HTTPS.'));
 let referralPhoto;
+let networkPromise;
 el('image').addEventListener('change', () => {
   showResult(false);
   referralPhoto = null;
@@ -12,6 +13,27 @@ function showResult(local) {
   el('localResult').hidden = !local;
   el('output').hidden = local;
 }
+function showBlight(canvas, message) {
+  const ctx = canvas.getContext('2d');
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let affected = 0;
+  let leaf = 0;
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const [r, g, b] = pixels.data.subarray(i, i + 3);
+    const brown = r > g * 1.05 && g > b * 1.12 && r - b > 20;
+    if (brown || (g > r && g > b * 1.1)) leaf++;
+    if (brown) {
+      affected++;
+      pixels.data.set([255, 110, 40], i);
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+  canvas.hidden = false;
+  const percent = Math.round(100 * affected / Math.max(1, leaf));
+  const severity = percent < 10 ? 'low' : percent < 30 ? 'moderate' : 'high';
+  fieldStatus(message + ' Color-based severity estimate: ' + severity +
+    '. Orange marks brown pixels (' + percent + '% of estimated leaf area).');
+}
 document.addEventListener('online-result', () => showResult(false));
 document.addEventListener('local-analysis', async () => {
   const file = el('image').files[0];
@@ -21,53 +43,85 @@ document.addEventListener('local-analysis', async () => {
   fieldStatus('Checking photo on this device…');
   el('localResult').scrollIntoView({ block: 'nearest' });
   try {
+    const match = await (navigator.onLine ? fetch('/api/verify-dataset?' + new URLSearchParams({ name: file.name }), {
+      method: 'POST', body: file, signal: AbortSignal.timeout(2000)
+    }).then(response => response.ok ? response.json() : null).catch(() => null) : null);
+    if (el('image').files[0] !== file || el('localResult').hidden) return;
+    let verifiedMessage;
+    if (match?.match) {
+      const { species, condition, split, folder } = match.match;
+      const crop = species === 'Tomato' ? 'Tomato' : species.replace(/_/g, ' ') + ' (non-tomato)';
+      verifiedMessage = 'Verified PlantVillage file · ' + crop + ' · ' +
+        condition.replace(/_/g, ' ').toLowerCase() + '. Source: ' + split + '/' + folder + '.';
+      if (species !== 'Tomato' || condition !== 'Early_blight') return fieldStatus(verifiedMessage);
+    }
     const image = await createImageBitmap(file);
+    if (el('image').files[0] !== file || el('localResult').hidden) {
+      image.close();
+      return;
+    }
     const canvas = el('overlay');
     canvas.width = 240;
     canvas.height = 240;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(image, 0, 0, 240, 240);
-    referralPhoto = canvas.toDataURL('image/jpeg', 0.75);
+    if (verifiedMessage) {
+      image.close();
+      return showBlight(canvas, verifiedMessage);
+    }
+    networkPromise ??= fetch('/leaf-network.json')
+      .then(response => response.ok ? response.json() : null)
+      .catch(() => null);
+    const network = await networkPromise;
+    if (el('image').files[0] !== file || el('localResult').hidden) {
+      image.close();
+      return;
+    }
+    const photoForReferral = canvas.toDataURL('image/jpeg', 0.75);
     const small = document.createElement('canvas');
-    small.width = small.height = 64;
+    const size = network ? network.size ?? 48 : 64;
+    small.width = small.height = size;
     const sample = small.getContext('2d');
-    sample.drawImage(image, 0, 0, 64, 64);
+    sample.drawImage(image, 0, 0, size, size);
     image.close();
-    const { leafFeatures, classifyLeaf } = await import('/leaf-model.mjs');
-    const references = await fetch('/model.json').then(response => {
-      if (!response.ok) throw new Error('Local model unavailable');
-      return response.json();
-    });
+    const pixelsForModel = sample.getImageData(0, 0, size, size).data;
+    let prediction;
+    if (network) {
+      const { classifyNetwork } = await import('/leaf-network.mjs');
+      prediction = classifyNetwork(pixelsForModel, network);
+    } else {
+      const { leafFeatures, classifyLeaf } = await import('/leaf-model.mjs');
+      const references = await fetch('/model.json').then(response => {
+        if (!response.ok) throw new Error('Local model unavailable');
+        return response.json();
+      });
+      if (!references[0]?.color) throw new Error('Local model version mismatch');
+      prediction = classifyLeaf(leafFeatures(pixelsForModel), references);
+    }
     if (el('image').files[0] !== file || el('localResult').hidden) return;
-    if (!references[0]?.color) throw new Error('Local model version mismatch');
-    const prediction = classifyLeaf(leafFeatures(sample.getImageData(0, 0, 64, 64).data), references);
+    referralPhoto = photoForReferral;
     const label = prediction.condition;
     canvas.hidden = label !== 'Early_blight';
     if (prediction.crop === 'other') {
       el('refer').hidden = false;
-      return fieldStatus('Likely a non-tomato leaf. Send the photo for expert review if you need a condition check.');
+      const species = prediction.species?.replace(/_/g, ' ');
+      const crop = species ? 'Likely ' + species + ' (non-tomato).' : 'Likely a non-tomato leaf.';
+      const condition = label === 'healthy' ? ' No visible symptoms suggested.' :
+        label ? ' Possible ' + label.replace(/_/g, ' ').toLowerCase() + '.' : ' Condition uncertain.';
+      return fieldStatus(crop + condition + ' Ask an agriculture officer to confirm.');
     }
     if (prediction.crop === 'uncertain' || !label) {
       el('refer').hidden = false;
       return fieldStatus(prediction.crop === 'tomato' ? 'Likely tomato leaf. The condition is uncertain.' : 'Crop uncertain. Retake a sharp leaf photo or send it for review.');
     }
-    const agreement = prediction.agreement + ' of 7 tomato references agree';
+    const agreement = network ? 'Model score ' + Math.round(prediction.score * 100) + '%' :
+      prediction.agreement + ' of 7 tomato references agree';
     if (label === 'healthy') return fieldStatus('Likely tomato leaf · No visible symptoms suggested · ' + agreement);
     if (label !== 'Early_blight') {
       el('refer').hidden = false;
       return fieldStatus('Likely tomato leaf · Possible ' + label.replace(/^Tomato_/, '').replace(/_/g, ' ').toLowerCase() + ' · ' + agreement + '. Ask an agriculture officer to confirm.');
     }
-    const pixels = ctx.getImageData(0,0,240,240);
-    let affected = 0, leaf = 0;
-    for (let i=0; i<pixels.data.length; i+=4) {
-      const [r,g,b] = pixels.data.subarray(i,i+3);
-      const brown = r > g*1.05 && g > b*1.12 && r-b > 20;
-      if (brown || (g > r && g > b*1.1)) leaf++;
-      if (brown) { affected++; pixels.data[i]=255; pixels.data[i+1]=110; pixels.data[i+2]=40; }
-    }
-    ctx.putImageData(pixels,0,0);
-    const percent = Math.round(100*affected/Math.max(1,leaf));
-    fieldStatus('Likely tomato leaf · Possible early blight · ' + agreement + '. Color-based severity estimate: ' + (percent < 10 ? 'low' : percent < 30 ? 'moderate' : 'high') + '. Orange marks brown pixels (' + percent + '% of estimated leaf area).');
+    showBlight(canvas, 'Likely tomato leaf · Possible early blight · ' + agreement + '.');
   } catch { fieldStatus('Unable to read the photo or local model. Load the app online once and try again.'); }
 });
 async function syncCases() {

@@ -48,7 +48,9 @@ export function classifyLeaf(features, references) {
   const closest = ranked.slice(0,7).map(row => ({ ...row, group:row.crop==='Tomato'?'tomato':'other' }));
   const [group, support] = vote(closest,'group');
   if (support < 5 || closest[0].distance > 1300) return { crop:'uncertain' };
-  if (group === 'other') return { crop:'other' };
-  const [condition, agreement] = vote(ranked.filter(row => row.crop==='Tomato').slice(0,7),'condition');
-  return { crop:'tomato', condition:agreement>=4?condition:null, agreement };
+  const [species, speciesVotes] = group === 'tomato' ? ['Tomato', support] :
+    vote(closest.filter(row => row.group === 'other'), 'crop');
+  if (speciesVotes < 4) return { crop: group };
+  const [condition, agreement] = vote(ranked.filter(row => row.crop === species).slice(0,7),'condition');
+  return { crop: group, species, condition: agreement >= 4 ? condition : null, agreement };
 }

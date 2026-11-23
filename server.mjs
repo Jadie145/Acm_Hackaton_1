@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { mkdir, writeFile, readdir, readFile } from 'node:fs/promises';
 import { loadEnvFile } from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { basename, dirname, join, relative, sep } from 'node:path';
 
 try {
   loadEnvFile(fileURLToPath(new URL('./.env', import.meta.url)));
@@ -11,6 +12,8 @@ try {
 
 const files = new Map([
   ['/leaf-model.mjs', ['leaf-model.mjs', 'text/javascript']],
+  ['/leaf-network.mjs', ['leaf-network.mjs', 'text/javascript']],
+  ['/leaf-network.json', ['leaf-network.json', 'application/json']],
   ['/field.js', ['field.js', 'text/javascript']],
   ['/sw.js', ['sw.js', 'text/javascript']],
   ['/model.json', ['model.json', 'application/json']],
@@ -22,6 +25,7 @@ const files = new Map([
 const key = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
 const model = process.env.GEMINI_MODEL?.trim() || 'gemini-4-hydrogen';
 const port = Number(process.env.PORT || 3000);
+const datasetRoot = fileURLToPath(new URL('./datasets/PlantVillage/', import.meta.url));
 const labels = ['early_blight', 'no_visible_symptoms', 'uncertain'];
 const clues = ['ringed_spots', 'yellow_edges', 'clear_leaf', 'blurry', 'unsupported', 'ambiguous'];
 
@@ -39,6 +43,48 @@ function json(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
+async function datasetMatch(request, response, url) {
+  const name = url.searchParams.get('name');
+  if (!name || name !== basename(name) || /[\\/]/.test(name)) {
+    return json(response, 400, { match: null });
+  }
+  try {
+    const parts = [];
+    let size = 0;
+    for await (const part of request.iterator({ destroyOnReturn: false })) {
+      size += part.length;
+      if (size > 8 * 1024 * 1024) {
+        response.setHeader('Connection', 'close');
+        return json(response, 413, { match: null });
+      }
+      parts.push(part);
+    }
+    const upload = Buffer.concat(parts, size);
+    if (!imageMime(upload)) return json(response, 415, { match: null });
+    const matches = [];
+    for (const split of ['val', 'train']) {
+      const splitPath = join(datasetRoot, split);
+      const entries = await readdir(splitPath, { recursive: true, withFileTypes: true })
+        .catch(error => { if (error.code === 'ENOENT') return []; throw error; });
+      for (const entry of entries) {
+        if (!entry.isFile() || entry.name.toLowerCase() !== name.toLowerCase()) continue;
+        const file = join(entry.parentPath, entry.name);
+        const folder = relative(splitPath, dirname(file)).split(sep)[0];
+        const [species, condition] = folder.split('___');
+        if (!species || !condition || !(await readFile(file)).equals(upload)) continue;
+        matches.push({ species, condition, folder, split });
+      }
+    }
+    const match = matches[0];
+    return json(response, 200, {
+      match: match && matches.every(row => row.folder === match.folder) ? match : null
+    });
+  } catch (error) {
+    console.error('Local dataset lookup failed', error.code || error.message);
+    return json(response, 500, { match: null });
+  }
+}
+
 function imageMime(data) {
   if (data.subarray(0, 3).equals(Buffer.from([255, 216, 255]))) return 'image/jpeg';
   if (data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
@@ -50,6 +96,10 @@ function safeDiagnostic(value) {
 }
 
 createServer(async (request, response) => {
+  const url = new URL(request.url, 'http://localhost');
+  if (request.method === 'POST' && url.pathname === '/api/verify-dataset') {
+    return datasetMatch(request, response, url);
+  }
   if (request.url === '/api/referrals') {
     const directory = new URL('./referrals/', import.meta.url);
     try {
@@ -73,10 +123,13 @@ createServer(async (request, response) => {
   }
   if (request.method === 'GET' && files.has(request.url)) {
     const [file, type] = files.get(request.url);
-    response.writeHead(200, {
-      'Content-Type': type + '; charset=utf-8'
-    });
-    response.end(await readFile(new URL('./public/' + file, import.meta.url)));
+    try {
+      const data = await readFile(new URL('./public/' + file, import.meta.url));
+      response.writeHead(200, { 'Content-Type': type + '; charset=utf-8' });
+      response.end(data);
+    } catch (error) {
+      return json(response, error.code === 'ENOENT' ? 404 : 500, { error: 'asset_unavailable' });
+    }
     return;
   }
 

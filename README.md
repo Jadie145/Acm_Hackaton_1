@@ -20,7 +20,22 @@ The server sends the selected photo to Gemini. Its result selects a predefined a
 
 ## PlantVillage lab-photo check
 
-`Analyze photo` runs the local classifier in the browser. It uses nearest neighbors over spatial color histograms from the ten tomato classes in PlantVillage. To rebuild its reference data on Windows, run:
+`Analyze photo` uses a compact convolutional classifier trained on PlantVillage's 38 crop and condition folders. It checks for tomato or another crop before suggesting a condition. Low model scores can yield uncertain results. The displayed score measures model preference within the selected crop group. The browser caches model files for offline use after the first online visit.
+
+The trained weights are served as `public/leaf-network.json`. Node and the browser need no Python packages at runtime. To retrain, use Python 3.12 with PyTorch, NumPy, and Pillow and run `python train-network.py` from the project folder. It uses `train` for fitting and reports a separate sample from `val`.
+
+With the local server reachable, the app can verify an unchanged PlantVillage photo using its filename and exact bytes. A match displays the curated class folder and split. Classifier validation runs inference directly and bypasses this lookup.
+
+If the network weights are unavailable, the app compares color, texture, and shape with labeled references. The vote count for this mode measures reference agreement.
+
+Rebuild the references and evaluate them against the separate validation split on Windows.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File train-local.ps1
+powershell -ExecutionPolicy Bypass -File train-local.ps1 -Validate -PerClass 10
+```
+
+Use these commands for the Gemini check.
 
 ```powershell
 $photo = Get-ChildItem -LiteralPath 'datasets/PlantVillage/val/Tomato___Early_blight' -File |
