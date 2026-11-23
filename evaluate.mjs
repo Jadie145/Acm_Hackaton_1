@@ -18,10 +18,11 @@ const discovered = new Map();
 const unknown = new Set();
 
 function expectedLabel(name) {
+  if (/^.+___.+$/.test(name)) return name;
   const normalized = name.toLowerCase().replace(/[^a-z]/g, '');
-  if (/^tomato(?:leaf)?earlyblight(?:leaf)?$/.test(normalized)) return 'early_blight';
-  if (/^tomato(?:healthy(?:leaf)?|leaf(?:healthy)?)$/.test(normalized)) return 'no_visible_symptoms';
-  if (/^tomato(?:leaf)?(?:septorialeafspot|bacterialspot|lateblight|leafmold|mold|spidermites(?:twospottedspidermite)?|targetspot|(?:tomato)?mosaicvirus|(?:tomato)?yellowleafcurlvirus|yellowvirus)(?:leaf)?$/.test(normalized)) return 'uncertain';
+  if (/^tomato(?:leaf)?earlyblight(?:leaf)?$/.test(normalized)) return 'Tomato___Early_blight';
+  if (/^tomato(?:healthy(?:leaf)?|leaf(?:healthy)?)$/.test(normalized)) return 'Tomato___healthy';
+  if (/^tomato(?:leaf)?septorialeafspot(?:leaf)?$/.test(normalized)) return 'Tomato___Septoria_leaf_spot';
 }
 
 function record(file) {
@@ -70,22 +71,15 @@ if (!groups.size) {
 }
 if (dryRun) process.exit(0);
 
-const status = await fetch(new URL('/api/status', base), { signal: AbortSignal.timeout(5000) });
-if (!status.ok || !(await status.json()).live) throw new Error('Start the app with GEMINI_API_KEY and check the evaluator URL.');
-
 const totals = { correct: 0, incorrect: 0, abstained_on_supported_case: 0, api_errors: 0, unscored: 0 };
 for (const [expected, files] of groups) {
   files.sort((left, right) => left.file.localeCompare(right.file));
   const sampleCount = Math.min(count, files.length);
   const selected = Array.from({ length: sampleCount }, (_, index) =>
     files[Math.floor((index + 0.5) * files.length / sampleCount)]);
-  if (expected === 'uncertain' && !selected.some(row => /septoria/i.test(row.classFolder))) {
-    const septoria = files.find(row => /septoria/i.test(row.classFolder));
-    if (septoria) selected[0] = septoria;
-  }
   for (const { mime, ...row } of selected) {
     try {
-      const response = await fetch(new URL('/api/analyze', base), {
+      const response = await fetch(new URL('/api/local-detect', base), {
         method: 'POST', headers: { 'Content-Type': mime }, body: await readFile(row.file),
         signal: AbortSignal.timeout(55000)
       });
@@ -95,8 +89,9 @@ for (const [expected, files] of groups) {
         console.log(JSON.stringify({ ...row, outcome: 'api_errors', status: response.status, ...result }));
         continue;
       }
-      const { label: actual, ...diagnostics } = result;
-      if (!['early_blight', 'no_visible_symptoms', 'uncertain'].includes(actual)) throw new Error('Invalid prediction label');
+      const diagnostics = result.verification;
+      if (diagnostics?.engine !== 'yolo') throw new Error('Start the app and wait for Local YOLO classifier ready.');
+      const actual = diagnostics.condition ? diagnostics.species + '___' + diagnostics.condition : 'uncertain';
       const outcome = !row.expected ? 'unscored' : actual === row.expected ? 'correct' :
         actual === 'uncertain' ? 'abstained_on_supported_case' : 'incorrect';
       totals[outcome]++;

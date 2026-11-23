@@ -3,7 +3,18 @@ const fieldStatus = message => { el('fieldResult').textContent = message; };
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => fieldStatus('Offline reload requires localhost or HTTPS.'));
 let referralPhoto;
 let networkPromise;
+let adviceId;
+let adviceController;
+function resetAdvice() {
+  adviceController?.abort();
+  adviceId = undefined;
+  el('cropAdvice').hidden = true;
+  el('cropAdvice').reset();
+  el('cropAdviceResult').replaceChildren();
+  el('getCropAdvice').disabled = false;
+}
 el('image').addEventListener('change', () => {
+  resetAdvice();
   showResult(false);
   referralPhoto = null;
   el('overlay').hidden = el('refer').hidden = true;
@@ -30,24 +41,23 @@ function showBlight(canvas, message) {
   ctx.putImageData(pixels, 0, 0);
   canvas.hidden = false;
   const percent = Math.round(100 * affected / Math.max(1, leaf));
-  const severity = percent < 10 ? 'low' : percent < 30 ? 'moderate' : 'high';
-  fieldStatus(message + ' Color-based severity estimate: ' + severity +
-    '. Orange marks brown pixels (' + percent + '% of estimated leaf area).');
+  fieldStatus(message + ' Orange marks brown pixels (' + percent + '% of estimated leaf area).');
 }
-document.addEventListener('online-result', () => showResult(false));
+document.addEventListener('online-result', () => { resetAdvice(); showResult(false); });
 document.addEventListener('local-analysis', async () => {
   const file = el('image').files[0];
   if (!file) return fieldStatus('Choose a leaf photo first.');
+  resetAdvice();
   showResult(true);
   el('overlay').hidden = el('refer').hidden = true;
   fieldStatus('Checking photo on this device…');
   el('localResult').scrollIntoView({ block: 'nearest' });
   try {
     const canReachServer = navigator.onLine || ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
-    const verification = await (canReachServer ? fetch('/api/local-detect', {
+    const scan = await (canReachServer ? fetch('/api/local-detect', {
       method: 'POST', body: file, signal: AbortSignal.timeout(4500)
-    }).then(response => response.ok ? response.json() : null)
-      .then(response => response?.verification).catch(() => null) : null);
+    }).then(response => response.ok ? response.json() : null).catch(() => null) : null);
+    const verification = scan?.verification;
     const yolo = verification?.engine === 'yolo';
     const match = await (canReachServer && !yolo ? fetch('/api/verify-dataset?' + new URLSearchParams({ name: file.name }), {
       method: 'POST', body: file, signal: AbortSignal.timeout(2000)
@@ -121,20 +131,63 @@ document.addEventListener('local-analysis', async () => {
     if (!species || !label) {
       el('refer').hidden = false;
       return fieldStatus(species ? 'Likely ' + species + ' · Disease uncertain. Retake the photo or send it for review.' :
-        (yolo ? 'YOLO could not confidently identify the crop or condition.' : 'Crop and disease uncertain.') +
-        ' Retake a sharp leaf photo or send it for review.');
+        'Crop and disease uncertain. Retake a sharp leaf photo or send it for review.');
     }
-    const agreement = typeof prediction.score === 'number'
-      ? (yolo ? 'YOLO' : 'Model') + ' score ' + Math.round(prediction.score * 100) + '%'
-      : prediction.agreement + ' of 7 crop references agree';
-    if (label === 'healthy') return fieldStatus('Likely ' + species + ' · No visible symptoms suggested · ' + agreement);
+    if (label === 'healthy') return fieldStatus('Likely ' + species + ' · No visible symptoms suggested');
+    if (yolo && scan.adviceId) {
+      adviceId = scan.adviceId;
+      el('adviceLanguage').value = el('language').value;
+      el('cropAdvice').hidden = false;
+    }
     if (label !== 'Early_blight' || prediction.species !== 'Tomato') {
       el('refer').hidden = false;
-      return fieldStatus('Likely ' + species + ' · Possible ' + label.replace(/^Tomato_/, '').replace(/_/g, ' ').trim().toLowerCase() + ' · ' + agreement + '. Ask an agriculture officer to confirm.');
+      return fieldStatus('Likely ' + species + ' · Possible ' + label.replace(/^Tomato_/, '').replace(/_/g, ' ').trim().toLowerCase() + '.');
     }
-    showBlight(canvas, 'Likely tomato leaf · Possible early blight · ' + agreement + '.');
+    showBlight(canvas, 'Likely tomato leaf · Possible early blight.');
   } catch { fieldStatus('Unable to read the photo or local model. Load the app online once and try again.'); }
 });
+el('cropAdvice').onsubmit = async event => {
+  event.preventDefault();
+  if (!adviceId) return;
+  const controller = new AbortController();
+  adviceController = controller;
+  const target = el('cropAdviceResult');
+  const button = el('getCropAdvice');
+  const language = el('adviceLanguage').value;
+  const input = el('affected').value;
+  button.disabled = true;
+  target.lang = language;
+  target.textContent = 'Preparing advice…';
+  try {
+    const response = await fetch('/api/crop-advice', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+      body: JSON.stringify({ id: adviceId, language, affected: input === '' ? null : Number(input) })
+    });
+    if (!response.ok) throw new Error(response.status === 404 ? 'This scan expired. Analyze the photo again.' : 'Advice unavailable. Check the affected area and retry.');
+    const answer = await response.json();
+    if (controller.signal.aborted) return;
+    const severity = document.createElement('strong');
+    severity.textContent = answer.severity + (answer.affected === null ? '' : ' · ' + answer.affected + '%');
+    target.replaceChildren(severity);
+    for (const item of answer.items) {
+      const row = document.createElement('p');
+      const source = document.createElement('a');
+      source.href = item.url;
+      source.textContent = item.source;
+      row.append(item.text, ' ', source);
+      target.append(row);
+    }
+    if (answer.engine === 'gemini-3.8-flash') {
+      const credit = document.createElement('small');
+      credit.textContent = 'Gemini 3.8 Flash';
+      target.append(credit);
+    }
+  } catch (error) {
+    if (!controller.signal.aborted) target.textContent = error.message;
+  } finally {
+    if (!controller.signal.aborted) button.disabled = false;
+  }
+};
 async function syncCases() {
   for (const key of Object.keys(localStorage).filter(k => k.startsWith('jrv-case-'))) {
     const response = await fetch('/api/referrals',{method:'POST',headers:{'Content-Type':'application/json'},body:localStorage.getItem(key)});
@@ -179,9 +232,9 @@ el('speak').onclick = () => {
   recognition.start();
 };
 const villages = [
-  { name: 'Ozar', coordinates: [20.09, 73.93] },
-  { name: 'Pimpalgaon Baswant', coordinates: [20.17, 73.98] },
-  { name: 'Niphad', coordinates: [20.08, 74.11] }
+  { name: 'Bicholim', coordinates: [15.593, 73.947] },
+  { name: 'Ponda', coordinates: [15.403, 74.012] },
+  { name: 'Quepem', coordinates: [15.213, 74.077] }
 ];
 
 const leaflet = document.createElement('script');

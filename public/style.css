@@ -78,7 +78,9 @@ main > .panel { margin-top: 1rem; } canvas { max-width: 100%; height: auto; }
 
 .workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .examples summary { cursor: pointer; padding: .7rem 0; }
-#onlineAnalyze { width: 100%; margin-top: .55rem; }
+#cropAdvice { display: grid; gap: .5rem; margin-top: 1rem; }
+#cropAdvice h3 { margin-bottom: 0; }
+#affected { width: 100%; padding: .55rem; font: inherit; }
 button:disabled { opacity: .65; cursor: default; }
 #localResult canvas { display: block; border-radius: .75rem; margin-bottom: .8rem; }
 .dashboard { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.5rem; }

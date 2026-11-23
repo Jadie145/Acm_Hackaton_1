@@ -51,12 +51,9 @@ const preview = document.querySelector('#preview');
 const placeholder = document.querySelector('#placeholder');
 const analyze = document.querySelector('#analyze');
 const output = document.querySelector('#output');
-let live = false;
 let status = 'idle';
-let analysisError = '';
 let result;
 let previewUrl;
-let requestController;
 let validPhoto = false;
 
 function append(parent, tag, content, className) {
@@ -74,14 +71,12 @@ function render() {
     node.textContent = t[node.dataset.copy];
   });
   document.querySelector('#connection').textContent = language.value === 'hi'
-    ? 'मुख्य जाँच इस डिवाइस पर होती है। Gemini के लिए इंटरनेट चाहिए।'
-    : 'Analyze photo runs on this device. Gemini requires an internet connection.';
+    ? 'मुख्य जाँच इस डिवाइस पर होती है। Gemini केवल आगे की सलाह के लिए है।'
+    : 'Analyze photo runs on this device. Gemini is optional for follow-up advice.';
   analyze.disabled = !validPhoto || status === 'busy';
-  document.querySelector('#onlineAnalyze').disabled = !live || !validPhoto || status === 'busy';
   output.replaceChildren();
   if (!result) {
     append(output, 'p', t[status], 'muted');
-    if (status === 'failed' && analysisError) append(output, 'p', analysisError, 'hint');
     return;
   }
   if (result.example) append(output, 'span', t.demo, 'tag');
@@ -110,7 +105,6 @@ function clearPreview() {
 
 language.addEventListener('change', render);
 image.addEventListener('change', () => {
-  requestController?.abort();
   clearPreview();
   result = undefined;
   const file = image.files[0];
@@ -126,45 +120,14 @@ image.addEventListener('change', () => {
   render();
 });
 
-document.querySelector('#scan').addEventListener('submit', async event => {
+document.querySelector('#scan').addEventListener('submit', event => {
   event.preventDefault();
-  if (analyze.disabled) return;
-  if (event.submitter === analyze) {
-    requestController?.abort();
-    document.dispatchEvent(new Event('local-analysis'));
-    return;
-  }
-  document.dispatchEvent(new Event('online-result'));
-  const controller = new AbortController();
-  requestController = controller;
-  result = undefined;
-  status = 'busy';
-  render();
-  try {
-    const file = image.files[0];
-    const response = await fetch('/api/analyze?scope=crops', {
-      method: 'POST', headers: { 'Content-Type': file.type }, body: file, signal: controller.signal
-    });
-    const answer = await response.json();
-    if (!response.ok) {
-      const diagnostic = [answer.error, answer.upstreamStatus && 'Gemini HTTP ' + answer.upstreamStatus, answer.detail].filter(Boolean);
-      throw new Error(diagnostic.join(' · ') || 'HTTP ' + response.status);
-    }
-    if (controller.signal.aborted) return;
-    result = answer;
-    status = 'idle';
-  } catch (error) {
-    if (controller.signal.aborted) return;
-    analysisError = error.message;
-    status = 'failed';
-  }
-  render();
+  if (!analyze.disabled) document.dispatchEvent(new Event('local-analysis'));
 });
 
 document.querySelectorAll('[data-example]').forEach(button => {
   button.addEventListener('click', () => {
     document.dispatchEvent(new Event('online-result'));
-    requestController?.abort();
     clearPreview();
     image.value = '';
     validPhoto = false;
@@ -176,7 +139,3 @@ document.querySelectorAll('[data-example]').forEach(button => {
 });
 
 render();
-fetch('/api/status').then(response => response.json()).then(status => {
-  live = status.live;
-  render();
-}).catch(() => render());

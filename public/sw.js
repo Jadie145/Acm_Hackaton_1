@@ -1,4 +1,4 @@
-const cacheName = 'jrv-field-v9';
+const cacheName = 'jrv-field-v11';
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(cacheName);
   await cache.addAll(['/', '/style.css', '/app.js', '/field.js', '/leaf-model.mjs', '/model.json', '/leaf-network.mjs']);

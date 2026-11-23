@@ -1,4 +1,4 @@
-﻿# JRV Crop Health Assistant
+# JRV Crop Health Assistant
 
 A local web app that checks leaf photos for tomato and other crops, suggests a condition, and lets you refer uncertain photos for review. The browser runs the local classifier with weights included in the repository.
 
@@ -30,12 +30,12 @@ Press **Ctrl+C** to stop the server. Run `Remove-Item Env:PORT` in that PowerShe
 
 | Feature | How to try it |
 | --- | --- |
-| Local classification | Choose a photo and select **Analyze photo**. The model checks 38 crop-and-condition classes across 14 PlantVillage crop groups. It reports a possible disease, no visible symptoms, or uncertainty. A possible tomato early-blight result includes a color-based overlay and severity estimate. |
+| Local classification | Choose a photo and select **Analyze photo**. The model checks 38 crop-and-condition classes across 14 PlantVillage crop groups. It reports a possible disease, no visible symptoms, or uncertainty. A possible tomato early-blight result includes a color-based overlay of brown pixels. |
 | Offline classification | Open the app while the server is reachable so the browser can cache the page and model. Keep using the same browser, address, and port. Once cached, local inference can run with the network disconnected. |
 | Dataset verification | With the optional dataset below and the local server reachable, upload an unchanged PlantVillage image under its original filename. The app verifies the bytes and displays the crop and condition. |
 | Marathi advice | Select the preset Marathi question or use the microphone button. Speech input and playback depend on browser support, microphone permission, and available voices. |
 | Expert referrals | Choose **Send photo for expert review** on an eligible result. In **Officer dashboard**, open the local expert inbox. Referrals queued offline sync when the app reconnects to the server. |
-| Map and forecast | Open the officer dashboard and select **Refresh forecast**. The map uses OpenStreetMap tiles through Leaflet and the humidity forecast comes from Open-Meteo. The three village reports and alerts are a demo scenario. These features need internet access. |
+| Map and forecast | Open the officer dashboard and select **Refresh forecast**. The map uses OpenStreetMap tiles through Leaflet and the humidity forecast comes from Open-Meteo. Bicholim, Ponda, and Quepem show simulated reports alongside live forecasts. These features need internet access. |
 
 The server listens on `127.0.0.1`, so the quick-start URL is reachable from the computer running the server. The model was trained on PlantVillage images. Field-photo results can be wrong or uncertain, especially for early blight. Treat the result as a screening aid.
 
@@ -58,25 +58,17 @@ project/
 
 If extraction creates an extra wrapper folder, move the inner `PlantVillage` directory into `datasets`. Dataset files are ignored by Git. The dataset is used for exact-file verification, retraining, and evaluation.
 
-## Optional Gemini check
+## Severity and sourced advice
 
-1. Create an API key in [Google AI Studio](https://aistudio.google.com/apikey).
-2. Create a file named `.env` next to `package.json`. Replace the example value with your key. Ensure Windows saves it as `.env` rather than `.env.txt`.
+After YOLO reports a possible disease, open **Severity and advice**. Enter your estimate of the visibly damaged percentage of the photographed leaf, or leave it blank. The app describes this observation as low (under 10%), moderate (10% to under 30%), high (30% or more), or unknown. These bands describe visible damage on one leaf. They do not measure field-wide disease severity.
 
-   ```dotenv
-   GEMINI_API_KEY=replace_with_your_key
-   GEMINI_MODEL=gemini-4-hydrogen
-   ```
+Choose English, Hindi, or Marathi, then select **Get sourced advice**. The app provides reviewed guidance for tomato early blight, potato early blight, apple scab, and corn common rust. Other conditions get a referral to a Zonal Agricultural Office in Goa. Advice includes source links.
 
-3. Restart the server and reload the app. Upload a photo and choose **Check with Gemini**.
-
-The browser's Gemini check looks for crop and disease across species. The evaluation CLI still uses the tomato benchmark labels.
-
-The model line is optional and defaults to `gemini-4-hydrogen`. Choose a vision model that supports structured output through the [Interactions API](https://aistudio.google.com/docs/interactions-overview) and has quota on your account. **Check with Gemini** sends the selected photo to Google. Keep your key in the Git-ignored `.env` file.
+Gemini 3.8 Flash can help prioritize the reviewed steps. To enable it, add `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey) to the Git-ignored `.env` file next to `package.json`, then restart. Only the YOLO result, observation, language, and approved choices are sent to Gemini. Reviewed guidance remains available if the Gemini request fails.
 
 ## Use a YOLO model trained in Colab
 
-Download `weights/best.pt` from your Colab run in Google Drive. Put it at `datasets/yolo/best.pt` in this project. Use your own PlantVillage YOLO **classification** checkpoint with crop-and-condition class names.
+The shared YOLO checkpoint belongs at `datasets/yolo/best.pt`. If your checkout does not contain it, download `weights/best.pt` from the Colab run and place it there. Use a trusted PlantVillage YOLO **classification** checkpoint with crop-and-condition class names.
 
 With Python 3.12 installed, run these commands in PowerShell from the project folder.
 
@@ -86,7 +78,7 @@ py -3.12 -m venv datasets/.yolo-venv
 npm.cmd start
 ```
 
-If you already created `datasets/.yolo-venv` with Ultralytics installed, start the server directly. The server prints **Local YOLO classifier ready** once it loads the checkpoint. Reload the app and use **Analyze photo**. Confident results show a **YOLO score**. Ambiguous results show uncertainty. While YOLO is ready, it analyzes the photo directly, including photos copied from PlantVillage. YOLO runs on the local server CPU without a Gemini key. The browser model is available when the local server or YOLO worker is unavailable.
+Each teammate creates their own Python environment with the commands above. If you already created `datasets/.yolo-venv` with Ultralytics installed, start the server directly. The server prints **Local YOLO classifier ready** once it loads the checkpoint. Reload the app and use **Analyze photo**. The app shows the possible condition or reports uncertainty. While YOLO is ready, it analyzes the photo directly, including photos copied from PlantVillage. YOLO runs on the local server CPU without a Gemini key. The browser model is available when the local server or YOLO worker is unavailable.
 
 For weights stored elsewhere, set `YOLO_WEIGHTS` to their path before starting. You can also set `PYTHON_EXECUTABLE` to a Python interpreter with Ultralytics installed.
 
@@ -116,9 +108,9 @@ powershell -ExecutionPolicy Bypass -File train-local.ps1 -Validate -PerClass 10
 
 Both training checks measure model predictions directly. Exact-file verification does not contribute to the reported scores.
 
-## Optional Gemini evaluation
+## Optional local YOLO evaluation
 
-A running app with a working Gemini key is required for scored calls. The dry run only reads local files and lists detected folders and labels.
+Start the app and wait for **Local YOLO classifier ready** before scoring. The dry run only reads local files and lists detected folders and labels.
 
 ```powershell
 # Inspect folder mappings.
@@ -136,7 +128,7 @@ node evaluate.mjs datasets/PlantVillage/val 2
 node evaluate.mjs datasets/PlantVillage/val 2 http://127.0.0.1:3019
 ```
 
-The evaluator shows the source folder, expected label, prediction, model, and reason for each image. It counts abstentions and API errors separately. To check field photos, place the [PlantDoc test split](https://github.com/pratikkayal/PlantDoc-Dataset/tree/master/test) at `datasets/PlantDoc/test` and run:
+The evaluator shows the source folder, expected label, predicted crop and condition, and model score for each image. It counts abstentions and API errors separately. To check field photos, place the [PlantDoc test split](https://github.com/pratikkayal/PlantDoc-Dataset/tree/master/test) at `datasets/PlantDoc/test` and run:
 
 ```powershell
 node evaluate.mjs datasets/PlantDoc/test --dry-run
@@ -153,5 +145,5 @@ Report PlantVillage and PlantDoc results separately. To manually test the **loca
 | PowerShell blocks `npm.ps1` | Use `npm.cmd start` or `node server.mjs`. |
 | Offline page or model fails to load | Reopen the app with the server running and allow the initial load to finish before disconnecting. Use the same browser, address, and port. |
 | Dataset photo shows a prediction instead of a verified match | Check the folder layout, server connection, original filename, and file contents. Edited or renamed photos use the classifier. |
-| Gemini button is disabled | Check the `.env` filename and key, restart the server, and reload the page. |
-| Gemini returns HTTP 429 | Check the model quota and retry timing shown in the error. **Analyze photo** uses the local model during quota limits. |
+| Severity and advice is unavailable | Wait for the YOLO worker and analyze a photo that receives a possible disease result. |
+| Gemini advisory request fails | The server logs the error and returns reviewed guidance in the selected language. |

@@ -1,3 +1,22 @@
+# Local credentials
 .env
+.env.*
+!.env.example
+
+# Dependencies and Python caches
 node_modules/
-datasets/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local data, Python environments, and training runs
+/datasets/*
+!/datasets/yolo/
+/datasets/yolo/*
+!/datasets/yolo/best.pt
+/runs/
+/referrals/
+/state/
+*.log

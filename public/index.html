@@ -37,7 +37,6 @@
           <p class="hint" data-copy="hint">Use daylight and keep one leaf in focus. JPEG, PNG or WebP, up to 8 MB.</p>
           <p class="hint" id="connection" role="status"></p>
           <button class="primary" id="analyze" disabled data-copy="analyze">Analyze photo</button>
-          <button id="onlineAnalyze" type="submit" disabled>Check with Gemini</button>
         </form>
         <details class="examples">
           <summary data-copy="examples">Preview example results</summary>
@@ -52,6 +51,19 @@
           <p id="fieldResult" role="status"></p>
           <canvas id="overlay" hidden aria-label="Approximate brown areas on the leaf"></canvas>
           <button id="refer" hidden>Send photo for expert review</button>
+          <form id="cropAdvice" hidden>
+            <h3>Severity and advice</h3>
+            <label for="affected">Visible damage on this leaf (%)</label>
+            <input id="affected" type="number" min="0" max="100" step="1" placeholder="Leave blank if unsure">
+            <label for="adviceLanguage">Advice language</label>
+            <select id="adviceLanguage">
+              <option value="en">English</option>
+              <option value="hi">हिन्दी</option>
+              <option value="mr">मराठी</option>
+            </select>
+            <button id="getCropAdvice" type="submit">Get sourced advice</button>
+            <div id="cropAdviceResult" role="status"></div>
+          </form>
         </div>
       </section>
     </div>
@@ -61,19 +73,19 @@
       <button id="advice">अगेती करपा दिसल्यास काय करावे?</button>
       <p id="reply" role="status"></p>
       <a href="https://agritech.tnau.ac.in/crop_protection/tomato_diseases_2.html">TNAU tomato advisory</a> ·
-      <a href="https://keralaagriculture.gov.in/wp-content/uploads/2021/03/Manual-Published-min.pdf">Kerala Agriculture Department, chapter XIII</a>
+      <a href="https://www.agri.goa.gov.in/Publications/INFORMATIVE%20BOOKLET.pdf">Goa Directorate of Agriculture · Zonal office contacts</a>
     </section>
     <section class="panel">
       <h2>Officer dashboard</h2>
       <div class="dashboard">
         <div>
           <h3>Village risk map</h3>
-          <p class="hint">Orange markers show simulated early-blight reports near Nashik.</p>
+          <p class="hint">Orange markers show simulated early-blight reports in Goa.</p>
           <div id="map" aria-label="Village risk map">Loading OpenStreetMap…</div>
         </div>
         <div>
           <h3>24-hour humidity</h3>
-          <p id="alert" role="status">Forecast for the three demo villages.</p>
+          <p id="alert" role="status">Forecast for Bicholim, Ponda, and Quepem.</p>
           <button id="weather">Refresh forecast</button>
           <p class="hint"><a href="https://open-meteo.com/">Weather by Open-Meteo</a></p>
           <h3>Expert referrals</h3>
