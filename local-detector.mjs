@@ -4,18 +4,19 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
+export const yoloEnvironment = fileURLToPath(new URL('./datasets/.yolo-venv', import.meta.url));
+export const yoloPython = resolve(yoloEnvironment, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+
 export function startDetector() {
   const windows = process.platform === 'win32';
   const venv = fileURLToPath(new URL(windows
     ? './datasets/.leaf-venv/Scripts/python.exe' : './datasets/.leaf-venv/bin/python', import.meta.url));
-  const yoloVenv = fileURLToPath(new URL(windows
-    ? './datasets/.yolo-venv/Scripts/python.exe' : './datasets/.yolo-venv/bin/python', import.meta.url));
   const configured = process.env.YOLO_WEIGHTS?.trim();
   const checkpoint = configured ? resolve(configured) : fileURLToPath(new URL('./datasets/yolo/best.pt', import.meta.url));
   const weights = existsSync(checkpoint) ? checkpoint : '';
   if (configured && !weights) console.warn('YOLO checkpoint was not found:', checkpoint);
   const python = process.env.PYTHON_EXECUTABLE?.trim() ||
-    ([...(weights ? [yoloVenv] : []), venv].find(existsSync));
+    ([...(weights ? [yoloPython] : []), venv].find(existsSync));
   const pending = new Map();
   let child;
   let ready = false;
@@ -45,6 +46,9 @@ export function startDetector() {
       if (message.ready) {
         ready = true;
         console.log(message.engine === 'yolo' ? 'Local YOLO classifier ready.' : 'Python leaf verifier ready.');
+        if (weights && message.engine !== 'yolo') {
+          console.warn('YOLO is inactive. Run npm run setup:yolo, then restart. If PYTHON_EXECUTABLE is set, it must point to a Python with Ultralytics installed.');
+        }
       } else {
         pending.get(message.id)?.(message.result);
       }

@@ -73,12 +73,13 @@ The shared YOLO checkpoint belongs at `datasets/yolo/best.pt`. If your checkout 
 With Python 3.12 installed, run these commands in PowerShell from the project folder.
 
 ```powershell
-py -3.12 -m venv datasets/.yolo-venv
-& .\datasets\.yolo-venv\Scripts\python.exe -m pip install ultralytics==8.4.216
+npm.cmd run setup:yolo
 npm.cmd start
 ```
 
-Each teammate creates their own Python environment with the commands above. If you already created `datasets/.yolo-venv` with Ultralytics installed, start the server directly. The server prints **Local YOLO classifier ready** once it loads the checkpoint. Reload the app and use **Analyze photo**. The app shows the possible condition or reports uncertainty. While YOLO is ready, it analyzes the photo directly, including photos copied from PlantVillage. YOLO runs on the local server CPU without a Gemini key. The browser model is available when the local server or YOLO worker is unavailable.
+On macOS or Linux, use `npm run setup:yolo` and `npm start`. Setup creates `datasets/.yolo-venv` and installs Ultralytics into the environment the server selects. If the app logs `No module named 'ultralytics'`, stop it, run setup, and restart. Clear any existing `PYTHON_EXECUTABLE` override from your shell or `.env` if you want the app to select the new environment automatically.
+
+The server prints **Local YOLO classifier ready** once it loads the checkpoint. Reload the app and use **Analyze photo**. The app shows the possible condition or reports uncertainty. While YOLO is ready, it analyzes the photo directly, including photos copied from PlantVillage. YOLO runs on the local server CPU without a Gemini key. The browser model is available when the local server or YOLO worker is unavailable.
 
 For weights stored elsewhere, set `YOLO_WEIGHTS` to their path before starting. You can also set `PYTHON_EXECUTABLE` to a Python interpreter with Ultralytics installed.
 

@@ -2,7 +2,8 @@
   "name": "jrv-crop-health",
   "private": true,
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "setup:yolo": "node setup-yolo.mjs"
   },
   "engines": { "node": ">=22" }
 }
