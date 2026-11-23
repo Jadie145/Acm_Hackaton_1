@@ -16,10 +16,12 @@ For live analysis, put `.env` next to `package.json`, set `GEMINI_API_KEY` using
 
 ## PlantVillage lab-photo check
 
-Download the [PlantVillage Kaggle dataset](https://www.kaggle.com/datasets/mohitsingh1804/plantvillage?resource=download) and extract it under `datasets/plantvillage`. With the app running and a Gemini key configured, run:
+`Analyze photo` runs the local classifier in the browser. It uses nearest neighbors over spatial color histograms from the ten tomato classes in PlantVillage. To rebuild its reference data on Windows, run `powershell -ExecutionPolicy Bypass -File train-local.ps1`. The displayed percentage measures neighbor agreement. `Check with Gemini` runs the separate online check.
+
+The local copy of the [PlantVillage Kaggle dataset](https://www.kaggle.com/datasets/mohitsingh1804/plantvillage?resource=download) contains `train` and `val` splits. Use the validation split to check the existing model. With the app running and a Gemini key configured, run:
 
 ```powershell
-node evaluate.mjs datasets/plantvillage 2 http://127.0.0.1:3001
+node evaluate.mjs datasets/PlantVillage/val 2 http://127.0.0.1:3001
 ```
 
 Use port 3000 if you started the server on its default port. The evaluator samples early blight, healthy tomato leaves, and Septoria leaf spot. For Septoria, the expected result is uncertain because the app does not identify that disease. API errors and abstentions on supported cases are counted separately. The photos are sent to Gemini for inference. Report this as a lab-photo evaluation.

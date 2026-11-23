@@ -1,7 +1,10 @@
 ﻿import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
 
 const files = new Map([
+  ['/field.js', ['field.js', 'text/javascript']],
+  ['/sw.js', ['sw.js', 'text/javascript']],
+  ['/model.json', ['model.json', 'application/json']],
   ['/', ['index.html', 'text/html']],
   ['/app.js', ['app.js', 'text/javascript']],
   ['/style.css', ['style.css', 'text/css']]
@@ -22,6 +25,27 @@ function json(response, status, data) {
 }
 
 createServer(async (request, response) => {
+  if (request.url === '/api/referrals') {
+    const directory = new URL('./referrals/', import.meta.url);
+    try {
+      await mkdir(directory, { recursive: true });
+      if (request.method === 'GET') {
+        const cases = await Promise.all((await readdir(directory)).filter(name => name.endsWith('.json')).map(async name => JSON.parse(await readFile(new URL(name, directory)))));
+        return json(response, 200, cases);
+      }
+      if (request.method === 'POST') {
+        let body = '';
+        for await (const chunk of request) {
+          body += chunk;
+          if (body.length > 300000) return json(response, 413, {});
+        }
+        const { id, photo } = JSON.parse(body);
+        if (!/^[a-f0-9-]{36}$/.test(id) || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo)) return json(response, 400, {});
+        await writeFile(new URL(id + '.json', directory), JSON.stringify({ id, photo }));
+        return json(response, 200, { id });
+      }
+    } catch { return json(response, 400, {}); }
+  }
   if (request.method === 'GET' && files.has(request.url)) {
     const [file, type] = files.get(request.url);
     response.writeHead(200, { 'Content-Type': type + '; charset=utf-8' });

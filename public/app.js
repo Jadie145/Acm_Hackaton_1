@@ -73,7 +73,8 @@ function render() {
     node.textContent = t[node.dataset.copy];
   });
   document.querySelector('#connection').textContent = t[live ? 'live' : 'missing'];
-  analyze.disabled = !live || !validPhoto || status === 'busy';
+  analyze.disabled = !validPhoto || status === 'busy';
+  document.querySelector('#onlineAnalyze').disabled = !live || !validPhoto || status === 'busy';
   output.replaceChildren();
   if (!result) {
     append(output, 'p', t[status], 'muted');
@@ -118,6 +119,12 @@ image.addEventListener('change', () => {
 document.querySelector('#scan').addEventListener('submit', async event => {
   event.preventDefault();
   if (analyze.disabled) return;
+  if (event.submitter === analyze) {
+    document.querySelector('#fieldResult').textContent = 'Checking photo on this device…';
+    document.querySelector('#fieldScan').click();
+    document.querySelector('#fieldResult').scrollIntoView({ block: 'center' });
+    return;
+  }
   const controller = new AbortController();
   requestController = controller;
   result = undefined;
